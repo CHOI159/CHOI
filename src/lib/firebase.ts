@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult } from 'firebase/auth';
 import { initializeFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
@@ -67,9 +67,14 @@ export const signInWithGoogle = async () => {
   try {
     const result = await signInWithPopup(auth, googleProvider);
     return result.user;
-  } catch (error) {
-    console.error("Error signing in with Google", error);
-    throw error;
+  } catch (error: any) {
+    console.error("Error signing in with Google via popup", error);
+    if (error.code === 'auth/popup-blocked' || error.name === 'PopupBlockedError' || window.innerWidth < 768) {
+      console.log("Falling back to signInWithRedirect...");
+      await signInWithRedirect(auth, googleProvider);
+    } else {
+      throw error;
+    }
   }
 };
 

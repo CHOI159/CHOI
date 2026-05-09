@@ -9,8 +9,8 @@ export function Profile() {
   if (!user || !profile) return null;
 
   const stats = [
-    { label: '被鸽次数', value: 0, icon: Heart, color: 'text-pink-500' },
-    { label: '放鸽次数', value: profile.noShowCount, icon: Frown, color: 'text-orange-500' },
+    { label: '被鸽次数', value: profile.stoodUpCount || 0, icon: Heart, color: 'text-pink-500' },
+    { label: '放鸽次数', value: profile.noShowCount || 0, icon: Frown, color: 'text-orange-500' },
   ];
 
   return (

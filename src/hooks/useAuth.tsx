@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { doc, getDoc, setDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
+import { auth, db, handleFirestoreError, OperationType, signInWithGoogle } from '../lib/firebase';
 import { UserProfile } from '../types';
 
 interface AuthContextType {
@@ -20,32 +20,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    return onAuthStateChanged(auth, async (currentUser) => {
+    let unsubscribeProfile: (() => void) | undefined;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       
+      if (unsubscribeProfile) {
+        unsubscribeProfile();
+        unsubscribeProfile = undefined;
+      }
+
       if (currentUser) {
         const userRef = doc(db, 'users', currentUser.uid);
         try {
+          // Fallback to getDoc if we need to create it for the first time
           const userDoc = await getDoc(userRef);
-          
-          if (userDoc.exists()) {
-            setProfile(userDoc.data() as UserProfile);
-          } else {
-            // Create new profile
+          if (!userDoc.exists()) {
             const newProfile = {
               uid: currentUser.uid,
               email: currentUser.email || '',
               displayName: currentUser.displayName || '匿名用户',
               photoURL: currentUser.photoURL || '',
               noShowCount: 0,
+              stoodUpCount: 0,
               updatedAt: new Date().toISOString()
             };
             await setDoc(userRef, {
               ...newProfile,
               updatedAt: serverTimestamp()
             });
-            setProfile(newProfile);
           }
+
+          unsubscribeProfile = onSnapshot(userRef, (snapshot) => {
+            if (snapshot.exists()) {
+              setProfile(snapshot.data() as UserProfile);
+            }
+          }, (error) => {
+            handleFirestoreError(error, OperationType.GET, `users/${currentUser.uid}`);
+          });
+
         } catch (error) {
           handleFirestoreError(error, OperationType.GET, `users/${currentUser.uid}`);
         }
@@ -54,10 +67,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       setLoading(false);
     });
+
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeProfile) unsubscribeProfile();
+    };
   }, []);
 
   const signIn = async () => {
-    const { signInWithGoogle } = await import('../lib/firebase');
     await signInWithGoogle();
   };
 

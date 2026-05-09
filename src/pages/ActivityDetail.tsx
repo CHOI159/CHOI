@@ -183,6 +183,56 @@ export function ActivityDetail() {
     return () => clearInterval(interval);
   }, [activity?.startTime, activity?.status, userParticipant?.status, user?.uid]);
 
+  // Real-time calculation of stoodUpCount and noShowCount
+  useEffect(() => {
+    if (!user || !userParticipant || !activity || activity.status === 'archived' || activity.status === 'cancelled') return;
+
+    let needsUserUpdate = false;
+    let noShowIncr = 0;
+    let stoodUpIncr = 0;
+    
+    // Using any for arbitrary flags
+    const updatesToParticipant: any = {};
+
+    // 1. Check if WE are a no-show, and we haven't settled it
+    if (userParticipant.status === 'no-show' && !(userParticipant as any).hasNoShowSettled) {
+      noShowIncr = 1;
+      updatesToParticipant.hasNoShowSettled = true;
+      needsUserUpdate = true;
+    }
+
+    // 2. Check if WE are 'arrived', and there is AT LEAST ONE 'no-show', and we haven't settled stoodUp
+    if (userParticipant.status === 'arrived' && !(userParticipant as any).hasStoodUpSettled) {
+      const hasAnyNoShow = participants.some(p => p.status === 'no-show');
+      if (hasAnyNoShow) {
+        stoodUpIncr = 1;
+        updatesToParticipant.hasStoodUpSettled = true;
+        needsUserUpdate = true;
+      }
+    }
+
+    if (needsUserUpdate) {
+      const executeRealtimeSettle = async () => {
+        try {
+          const userRef = doc(db, 'users', user.uid);
+          const userUpdates: any = { updatedAt: serverTimestamp() };
+          if (noShowIncr > 0) userUpdates.noShowCount = increment(1);
+          if (stoodUpIncr > 0) userUpdates.stoodUpCount = increment(1);
+          
+          await setDoc(userRef, userUpdates, { merge: true });
+
+          const pRef = doc(db, `activities/${activity.id}/participants`, user.uid);
+          await setDoc(pRef, updatesToParticipant, { merge: true });
+          
+          console.log("[ActivityDetail] Real-time settling complete:", { noShowIncr, stoodUpIncr });
+        } catch (e) {
+          console.error("[ActivityDetail] Real-time settling failed:", e);
+        }
+      };
+      executeRealtimeSettle();
+    }
+  }, [user, userParticipant, participants, activity?.status, activity?.id]);
+
   const getRouteInfo = async (startLat: number, startLng: number, endLat: number, endLng: number) => {
     try {
       const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${endLng},${endLat}?overview=false`);
@@ -335,13 +385,6 @@ export function ActivityDetail() {
       const pRef = doc(db, `activities/${id}/participants`, user.uid);
       await setDoc(pRef, { 
         status: 'no-show', 
-        updatedAt: serverTimestamp() 
-      }, { merge: true });
-
-      const userRef = doc(db, 'users', user.uid);
-      await setDoc(userRef, { 
-        uid: user.uid,
-        noShowCount: increment(1), 
         updatedAt: serverTimestamp() 
       }, { merge: true });
 
@@ -538,7 +581,7 @@ export function ActivityDetail() {
         </div>
 
         {/* Creator Control Panel (Floating-Bottom Center) */}
-        {(user?.uid === activity.creatorId || user?.email === 'choihou95@gmail.com') && (activity.status === 'active' || activity.status === 'completed') && (
+        {user?.uid === activity.creatorId && (activity.status === 'active' || activity.status === 'completed') && (
           <div className="fixed bottom-40 left-0 right-0 px-6 max-w-lg mx-auto flex justify-center z-[4000]">
             <motion.div 
               initial={{ opacity: 0, y: 20 }}

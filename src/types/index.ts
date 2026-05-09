@@ -4,6 +4,7 @@ export interface UserProfile {
   displayName: string;
   photoURL: string;
   noShowCount: number;
+  stoodUpCount: number;
   updatedAt: string;
 }
 

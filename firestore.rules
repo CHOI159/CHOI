@@ -34,7 +34,7 @@ service cloud.firestore {
       
       allow create: if isOwner(userId);
 
-      allow update: if isOwner(userId);
+      allow update: if isOwner(userId) || (isSignedIn() && incoming().diff(existing()).affectedKeys().hasOnly(['noShowCount', 'stoodUpCount', 'updatedAt']));
     }
 
     // --- 活动集合规则 ---
@@ -56,7 +56,10 @@ service cloud.firestore {
       
       allow create: if isOwner(userId);
 
-      allow update: if isOwner(userId);
+      allow update: if isOwner(userId) || (
+        isSignedIn() && 
+        incoming().diff(existing()).affectedKeys().hasOnly(['hasNoShowSettled', 'hasStoodUpSettled', 'updatedAt'])
+      );
       
       allow delete: if isOwner(userId);
     }
