@@ -1,0 +1,64 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 默认拒绝所有读写
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- 全局辅助函数 ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- 用户集合规则 ---
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      
+      allow create: if isOwner(userId);
+
+      allow update: if isOwner(userId);
+    }
+
+    // --- 活动集合规则 ---
+    match /activities/{activityId} {
+      allow read: if isSignedIn();
+      
+      allow create: if isSignedIn();
+
+      allow update: if isSignedIn()
+        && (resource.data.creatorId == request.auth.uid || request.auth.token.email == 'choihou95@gmail.com');
+      
+      allow delete: if isSignedIn()
+        && (resource.data.creatorId == request.auth.uid || request.auth.token.email == 'choihou95@gmail.com');
+    }
+
+    // --- 参与者子集合规则 ---
+    match /activities/{activityId}/participants/{userId} {
+      allow read: if isSignedIn();
+      
+      allow create: if isOwner(userId);
+
+      allow update: if isOwner(userId);
+      
+      allow delete: if isOwner(userId);
+    }
+  }
+}

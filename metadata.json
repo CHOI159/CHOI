@@ -1,0 +1,12 @@
+{
+  "name": "放鸽子记录器 (No-Show Tracker)",
+  "description": "一个记录活动和“放鸽子”行为的社交应用。创建活动、分享链接、实时位置追踪，记录谁是最强“鸽王”。",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "GPS tracking",
+    "Social sharing",
+    "Activity management"
+  ]
+}
