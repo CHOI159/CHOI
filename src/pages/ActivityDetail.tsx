@@ -97,6 +97,10 @@ export function ActivityDetail() {
   const [confirmingNoShow, setConfirmingNoShow] = useState(false);
   const [confirmingArrival, setConfirmingArrival] = useState(false);
   const [isProcessingAction, setIsProcessingAction] = useState(false);
+  const [isMapFullscreen, setIsMapFullscreen] = useState(false);
+
+  const settledNoShowLocalRef = React.useRef(false);
+  const settledStoodUpLocalRef = React.useRef(false);
 
   useEffect(() => {
     if (!id) return;
@@ -195,16 +199,18 @@ export function ActivityDetail() {
     const updatesToParticipant: any = {};
 
     // 1. Check if WE are a no-show, and we haven't settled it
-    if (userParticipant.status === 'no-show' && !(userParticipant as any).hasNoShowSettled) {
+    if (userParticipant.status === 'no-show' && !(userParticipant as any).hasNoShowSettled && !settledNoShowLocalRef.current) {
+      settledNoShowLocalRef.current = true;
       noShowIncr = 1;
       updatesToParticipant.hasNoShowSettled = true;
       needsUserUpdate = true;
     }
 
     // 2. Check if WE are 'arrived', and there is AT LEAST ONE 'no-show', and we haven't settled stoodUp
-    if (userParticipant.status === 'arrived' && !(userParticipant as any).hasStoodUpSettled) {
+    if (userParticipant.status === 'arrived' && !(userParticipant as any).hasStoodUpSettled && !settledStoodUpLocalRef.current) {
       const hasAnyNoShow = participants.some(p => p.status === 'no-show');
       if (hasAnyNoShow) {
+        settledStoodUpLocalRef.current = true;
         stoodUpIncr = 1;
         updatesToParticipant.hasStoodUpSettled = true;
         needsUserUpdate = true;
@@ -506,13 +512,19 @@ export function ActivityDetail() {
   return (
     <div className="min-h-screen relative pb-40 bg-[#050505]">
       {/* Hero Map Background */}
-      <div className="h-[45vh] w-full relative z-0">
+      <div className={cn(
+        isMapFullscreen ? "fixed inset-0 z-[5000] h-[100dvh] bg-[#050505]" : "h-[45vh] w-full relative z-0"
+      )}>
         <MapContainer 
+          key={isMapFullscreen ? 'full' : 'embed'}
           center={[activity.location.lat, activity.location.lng]} 
           zoom={15} 
-          scrollWheelZoom={true} 
+          scrollWheelZoom={isMapFullscreen}
+          dragging={isMapFullscreen}
+          touchZoom={isMapFullscreen}
+          doubleClickZoom={isMapFullscreen}
+          zoomControl={isMapFullscreen}
           className="h-full w-full"
-          zoomControl={false}
         >
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -550,9 +562,29 @@ export function ActivityDetail() {
 
           <MapControls userLoc={currentUserLocation} destLoc={activity.location} />
         </MapContainer>
-        <div className="absolute inset-0 bg-gradient-to-t from-[#050505] to-transparent pointer-events-none z-[5]" />
-        
-        {/* Command Header */}
+
+        {!isMapFullscreen && (
+          <>
+            <div 
+              className="absolute inset-0 z-[1000] cursor-pointer"
+              onClick={() => setIsMapFullscreen(true)}
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#050505] to-transparent pointer-events-none z-[5]" />
+          </>
+        )}
+
+        {isMapFullscreen && (
+          <div className="absolute top-8 left-6 z-[6000]">
+            <button
+              onClick={() => setIsMapFullscreen(false)}
+              className="w-12 h-12 bg-black/80 backdrop-blur-xl rounded-2xl flex items-center justify-center shadow-2xl active:scale-90 transition-all text-white border border-white/10"
+            >
+              <ArrowLeft className="w-6 h-6" />
+            </button>
+          </div>
+        )}
+      
+      {/* Command Header */}
         <div className="fixed top-8 left-0 right-0 px-6 flex justify-between items-center z-[3000] pointer-events-none">
           <button
             onClick={() => navigate(-1)}
