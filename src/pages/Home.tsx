@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { collection, query, where, orderBy, onSnapshot, limit, getDocs } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, limit, getDocs, doc, setDoc, updateDoc, arrayUnion, serverTimestamp } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
 import { Activity } from '../types';
@@ -23,7 +23,7 @@ export function Home() {
 
   const handleJoinByCode = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!shareCodeInput.trim() || isJoining) return;
+    if (!shareCodeInput.trim() || isJoining || !user) return;
 
     setIsJoining(true);
     try {
@@ -36,11 +36,32 @@ export function Home() {
         return;
       }
 
-      const docId = snap.docs[0].id;
+      const docSnapshot = snap.docs[0];
+      const docId = docSnapshot.id;
+      const activityData = docSnapshot.data() as Activity;
+
+      // Automatically join if not already in participantIds
+      if (!activityData.participantIds?.includes(user.uid) && activityData.status === 'active') {
+        const pRef = doc(db, `activities/${docId}/participants`, user.uid);
+        await setDoc(pRef, {
+          uid: user.uid,
+          displayName: user.displayName || '匿名用户',
+          photoURL: user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`,
+          status: 'joined',
+          joinedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+        
+        const activityRef = doc(db, 'activities', docId);
+        await updateDoc(activityRef, {
+          participantIds: arrayUnion(user.uid)
+        });
+      }
+
       navigate(`/activity/${docId}`);
     } catch (err: any) {
       console.error(err);
-      alert("查询分享码出错：" + err.message);
+      alert("查询或加入活动出错：" + err.message);
     } finally {
       setIsJoining(false);
     }

@@ -164,11 +164,11 @@ export function CreateActivity() {
 
           <div>
             <label className="block text-[10px] font-bold text-[#666] uppercase tracking-widest mb-2 ml-1">目的地监控点 (可搜索或点击地图)</label>
-            <div className="rounded-2xl overflow-hidden border border-[#1f1f1f] shadow-2xl relative">
-              <div className="p-3 bg-[#0d0d0d] border-b border-[#1f1f1f]">
+            <div className="rounded-2xl border border-[#1f1f1f] shadow-2xl relative bg-[#0d0d0d]">
+              <div className="p-3 border-b border-[#1f1f1f] relative z-10">
                 <LocationSearch onLocationSelect={(p) => setLocation(p)} />
               </div>
-              <div className="h-64 relative bg-[#0d0d0d] z-0">
+              <div className="h-64 relative z-0 rounded-b-2xl overflow-hidden">
                 <MapContainer 
                   center={[31.2304, 121.4737]} 
                   zoom={13} 

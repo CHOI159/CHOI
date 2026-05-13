@@ -25,13 +25,17 @@ function SearchInner({ onLocationSelect, placeholder = "搜索目的地..." }: L
   const placesLib = hasValidKey ? useMapsLibrary('places') : null;
 
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
+    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
         setIsOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
   }, []);
 
   const searchLocation = async (val: string) => {
@@ -60,8 +64,7 @@ function SearchInner({ onLocationSelect, placeholder = "搜索目的地..." }: L
       } else {
         // Fallback to OSM Nominatim
         const response = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(val)}&limit=5&addressdetails=1`,
-          { headers: { 'User-Agent': 'GoeGo-App/1.0' } }
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(val)}&limit=5&addressdetails=1&email=test@example.com`
         );
         const data = await response.json();
         const mappedResults = data.map((res: any) => ({
