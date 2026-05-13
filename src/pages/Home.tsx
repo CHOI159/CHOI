@@ -123,8 +123,18 @@ export function Home() {
 
       {loading ? (
         <div className="space-y-4">
-          {[1, 2].map(i => (
-            <div key={i} className="h-32 bg-[#0d0d0d] rounded-2xl animate-pulse border border-[#1f1f1f]" />
+          {[1, 2, 3].map(i => (
+            <div key={i} className="h-[180px] bg-[#0d0d0d] rounded-2xl animate-pulse border border-[#1f1f1f] p-6 flex flex-col justify-between overflow-hidden relative">
+              <div className="absolute top-0 left-0 w-1 h-full bg-[#f43f5e]/20" />
+              <div className="space-y-3">
+                <div className="h-6 bg-[#1a1a1a] rounded-md w-3/4" />
+                <div className="h-4 bg-[#1a1a1a] rounded-md w-1/3" />
+              </div>
+              <div className="space-y-2">
+                <div className="h-4 bg-[#1a1a1a] rounded-md w-1/2" />
+                <div className="h-4 bg-[#1a1a1a] rounded-md w-full" />
+              </div>
+            </div>
           ))}
         </div>
       ) : activities.length === 0 ? (

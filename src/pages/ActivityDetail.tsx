@@ -6,11 +6,12 @@ import { useAuth } from '../hooks/useAuth';
 import { Activity, Participant } from '../types';
 import { activityService } from '../services/activityService';
 import { MapPin, Calendar, Clock, Share2, Users, Map as MapIcon, XCircle, CheckCircle2, Navigation, Loader2, ArrowLeft, Trash2, Edit3, PlusCircle, Power, Archive as ArchiveIcon } from 'lucide-react';
-import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, useMap, Polyline } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { cn, formatDistance, formatTime } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
+import { SharePoster } from '../components/SharePoster';
 
 // Fix Leaflet icon issue
 import icon from 'leaflet/dist/images/marker-icon.png';
@@ -89,8 +90,10 @@ export function ActivityDetail() {
   // Real-time tracking state
   const [distance, setDistance] = useState<number | null>(null);
   const [duration, setDuration] = useState<number | null>(null);
+  const [routeGeometry, setRouteGeometry] = useState<[number, number][] | null>(null);
   const [trackingActive, setTrackingActive] = useState(false);
   const [checkingLocation, setCheckingLocation] = useState(false);
+  const [geoError, setGeoError] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [confirmingArchive, setConfirmingArchive] = useState(false);
   const [confirmingComplete, setConfirmingComplete] = useState(false);
@@ -98,6 +101,7 @@ export function ActivityDetail() {
   const [confirmingArrival, setConfirmingArrival] = useState(false);
   const [isProcessingAction, setIsProcessingAction] = useState(false);
   const [isMapFullscreen, setIsMapFullscreen] = useState(false);
+  const [isSharePosterOpen, setIsSharePosterOpen] = useState(false);
 
   const settledNoShowLocalRef = React.useRef(false);
   const settledStoodUpLocalRef = React.useRef(false);
@@ -241,12 +245,14 @@ export function ActivityDetail() {
 
   const getRouteInfo = async (startLat: number, startLng: number, endLat: number, endLng: number) => {
     try {
-      const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${endLng},${endLat}?overview=false`);
+      const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${endLng},${endLat}?overview=full&geometries=geojson`);
       const data = await response.json();
       if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+        const coords = data.routes[0].geometry.coordinates.map((c: [number, number]) => [c[1], c[0]]); // GeoJSON is [lng, lat], Leaflet wants [lat, lng]
         return {
           distance: data.routes[0].distance, // in meters
-          duration: data.routes[0].duration * 1000 // in ms
+          duration: data.routes[0].duration * 1000, // in ms
+          geometry: coords
         };
       }
     } catch (err) {
@@ -257,7 +263,8 @@ export function ActivityDetail() {
     const d = getDistance(startLat, startLng, endLat, endLng) * 1000;
     return {
       distance: d * 1.3, // Road distance is usually 30% longer
-      duration: (d * 1.3 / 11.1) * 1000 
+      duration: (d * 1.3 / 11.1) * 1000,
+      geometry: [[startLat, startLng], [endLat, endLng]] as [number, number][]
     };
   };
 
@@ -275,6 +282,8 @@ export function ActivityDetail() {
         const route = await getRouteInfo(userLat, userLng, targetLat, targetLng);
         setDistance(route.distance);
         setDuration(route.duration);
+        setRouteGeometry(route.geometry);
+        setGeoError(null);
 
         // Auto-arrive if within 100m
         if (route.distance < 100 && userParticipant?.status === 'joined') {
@@ -297,6 +306,11 @@ export function ActivityDetail() {
       (err) => {
         console.error(err);
         setCheckingLocation(false);
+        if (err.code === err.PERMISSION_DENIED) {
+          setGeoError('您需要开启定位权限，才能自动检测并记录【已到达】状态或测算距离！');
+        } else {
+          setGeoError('无法获取位置，请确保设备信号良好（如果在室内建议靠近窗户）。');
+        }
       },
       { enableHighAccuracy: true }
     );
@@ -337,13 +351,23 @@ export function ActivityDetail() {
             const route = await getRouteInfo(userLat, userLng, targetLat, targetLng);
             setDistance(route.distance);
             setDuration(route.duration);
+            setRouteGeometry(route.geometry);
+            setGeoError(null);
 
             if (route.distance < 100) {
               handleArrival();
             }
           }
         },
-        (err) => console.error("[ActivityDetail] Geolocation error:", err),
+        (err) => {
+          console.error("[ActivityDetail] Geolocation error:", err);
+          if (err.code === err.PERMISSION_DENIED) {
+            setGeoError('您需要开启定位权限，才能监控您的动向。');
+            setTrackingActive(false);
+          } else {
+            setGeoError('无法获取位置，请检查信号状态。');
+          }
+        },
         { enableHighAccuracy: true }
       );
     }
@@ -462,20 +486,7 @@ export function ActivityDetail() {
   }
 
   const handleShare = () => {
-    const url = window.location.href;
-    if (navigator.share) {
-      navigator.share({ 
-        title: activity?.title, 
-        text: `【行动召集】快加入我的活动：${activity?.title}`, 
-        url: url 
-      }).catch(() => {
-        navigator.clipboard.writeText(url);
-        alert('链接已复制到剪贴板！');
-      });
-    } else {
-      navigator.clipboard.writeText(url);
-      alert('链接已复制到剪贴板！');
-    }
+    setIsSharePosterOpen(true);
   };
 
   async function handleActionDelete() {
@@ -503,8 +514,16 @@ export function ActivityDetail() {
 
   if (loading || !activity) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="w-8 h-8 animate-spin text-orange-600" />
+      <div className="flex flex-col items-center justify-center min-h-screen bg-[#050505] p-6 space-y-8">
+        <div className="w-full h-[40vh] bg-[#111] rounded-3xl animate-pulse border border-[#1f1f1f]" />
+        <div className="w-full space-y-4">
+          <div className="h-10 bg-[#111] rounded-xl w-3/4 animate-pulse" />
+          <div className="h-6 bg-[#111] rounded-lg w-1/2 animate-pulse" />
+        </div>
+        <div className="w-full space-y-3">
+          <div className="h-16 bg-[#111] rounded-2xl animate-pulse" />
+          <div className="h-16 bg-[#111] rounded-2xl animate-pulse" />
+        </div>
       </div>
     );
   }
@@ -527,8 +546,8 @@ export function ActivityDetail() {
           className="h-full w-full"
         >
           <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
           />
           
           {/* Destination Marker */}
@@ -557,6 +576,18 @@ export function ActivityDetail() {
                 '我在移动',
                 true
               )}
+            />
+          )}
+
+          {/* Route Path connecting user to destination */}
+          {routeGeometry && (
+            <Polyline 
+              positions={routeGeometry} 
+              color="#f43f5e" 
+              weight={4} 
+              opacity={0.8} 
+              dashArray="10, 10" 
+              lineCap="round"
             />
           )}
 
@@ -661,6 +692,17 @@ export function ActivityDetail() {
           <div className="absolute top-0 left-0 w-1 h-full bg-[#f43f5e]" />
           
           <div className="mb-8">
+            {geoError && (
+              <motion.div 
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-start gap-3"
+              >
+                <XCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                <p className="text-sm font-medium text-red-200 leading-snug">{geoError}</p>
+              </motion.div>
+            )}
+
             <div className="flex items-center gap-2 mb-3">
               <span className={`px-2 py-0.5 bg-[#1a1313] text-[10px] font-bold uppercase rounded border tracking-widest ${
                 activity.status === 'active' ? 'text-[#f43f5e] border-[#331c1c]' :
@@ -873,6 +915,11 @@ export function ActivityDetail() {
           </div>
         )}
       </div>
+      <SharePoster 
+        activity={activity} 
+        isOpen={isSharePosterOpen} 
+        onClose={() => setIsSharePosterOpen(false)} 
+      />
     </div>
   );
 }
