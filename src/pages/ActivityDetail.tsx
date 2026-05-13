@@ -26,7 +26,10 @@ let DefaultIcon = L.icon({
 L.Marker.prototype.options.icon = DefaultIcon;
 
 // Custom icons for participants
-const createParticipantIcon = (photoURL: string, displayName: string, isMe: boolean) => {
+const createParticipantIcon = (photoURL: string, displayName: string, isMe: boolean, color?: string) => {
+  const borderColorStyle = isMe ? 'border-color: white;' : (color ? `border-color: ${color};` : 'border-color: #3b82f6;');
+  const bgColorStyle = isMe ? 'background-color: #22c55e;' : (color ? `background-color: ${color};` : 'background-color: #3b82f6;');
+  
   return L.divIcon({
     className: 'custom-participant-icon',
     html: `
@@ -35,10 +38,11 @@ const createParticipantIcon = (photoURL: string, displayName: string, isMe: bool
           ${isMe ? '<div class="absolute inset-0 bg-white rounded-full animate-ping opacity-20 scale-150"></div>' : ''}
           <img 
             src="${photoURL}" 
-            class="w-10 h-10 rounded-full border-2 ${isMe ? 'border-white' : 'border-blue-500'} bg-black shadow-2xl relative z-10"
+            class="w-10 h-10 rounded-full border-2 bg-black shadow-2xl relative z-10"
+            style="${borderColorStyle};"
             alt="${displayName}"
           />
-          <div class="absolute -bottom-1 -right-1 w-3 h-3 ${isMe ? 'bg-green-500' : 'bg-blue-500'} rounded-full border-2 border-black flex items-center justify-center">
+          <div class="absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-black flex items-center justify-center" style="${bgColorStyle};">
             <div class="w-1 h-1 bg-white rounded-full animate-pulse"></div>
           </div>
         </div>
@@ -77,6 +81,19 @@ const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => 
   return R * c;
 };
 
+const ROUTE_COLORS = [
+  '#3b82f6', // blue
+  '#10b981', // emerald
+  '#f59e0b', // amber
+  '#8b5cf6', // violet
+  '#ec4899', // pink
+  '#06b6d4', // cyan
+  '#84cc16', // lime
+  '#f97316', // orange
+  '#14b8a6', // teal
+  '#6366f1', // indigo
+];
+
 export function ActivityDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -91,6 +108,8 @@ export function ActivityDetail() {
   const [distance, setDistance] = useState<number | null>(null);
   const [duration, setDuration] = useState<number | null>(null);
   const [routeGeometry, setRouteGeometry] = useState<[number, number][] | null>(null);
+  const [participantRoutes, setParticipantRoutes] = useState<Record<string, { geometry: [number, number][], color: string }>>({});
+  const fetchedRoutesRef = useRef<Record<string, { geometry: [number, number][], lat: number, lng: number }>>({});
   const [trackingActive, setTrackingActive] = useState(false);
   const [checkingLocation, setCheckingLocation] = useState(false);
   const [geoError, setGeoError] = useState<string | null>(null);
@@ -276,6 +295,52 @@ export function ActivityDetail() {
       geometry: [[startLat, startLng], [endLat, endLng]] as [number, number][]
     };
   };
+
+  useEffect(() => {
+    if (!activity) return;
+
+    const fetchOtherRoutes = async () => {
+      let changed = false;
+      const newRoutes: Record<string, { geometry: [number, number][], color: string }> = { ...participantRoutes };
+
+      const existingColors = new Set(Object.values(newRoutes).map(r => r.color));
+      existingColors.add("#f43f5e"); // User's own color
+
+      const assignColor = (uid: string) => {
+          if (newRoutes[uid]) return newRoutes[uid].color;
+          const availableColors = ROUTE_COLORS.filter(c => !existingColors.has(c));
+          if (availableColors.length > 0) {
+              const color = availableColors[0];
+              existingColors.add(color);
+              return color;
+          }
+          let hash = 0;
+          for (let i = 0; i < uid.length; i++) hash = uid.charCodeAt(i) + ((hash << 5) - hash);
+          return ROUTE_COLORS[Math.abs(hash) % ROUTE_COLORS.length];
+      };
+
+      for (const p of participants) {
+        if (p.uid === user?.uid) continue;
+        if (p.location && (p.status === 'joined' || p.status === 'arrived')) {
+          const prevFetch = fetchedRoutesRef.current[p.uid];
+          if (!prevFetch || getDistance(prevFetch.lat, prevFetch.lng, p.location.lat, p.location.lng) > 0.05) {
+            const route = await getRouteInfo(p.location.lat, p.location.lng, activity.location.lat, activity.location.lng);
+            const color = assignColor(p.uid);
+            
+            fetchedRoutesRef.current[p.uid] = { geometry: route.geometry, lat: p.location.lat, lng: p.location.lng };
+            newRoutes[p.uid] = { geometry: route.geometry, color };
+            changed = true;
+          }
+        }
+      }
+
+      if (changed) {
+        setParticipantRoutes(newRoutes);
+      }
+    };
+
+    fetchOtherRoutes();
+  }, [participants, activity, user?.uid]);
 
   const updateLocationInfo = async () => {
     if (!activity || !navigator.geolocation) return;
@@ -595,7 +660,8 @@ export function ActivityDetail() {
               icon={createParticipantIcon(
                 p.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.uid}`,
                 p.displayName,
-                false
+                false,
+                participantRoutes[p.uid]?.color
               )}
             />
           ))}
@@ -613,7 +679,7 @@ export function ActivityDetail() {
             />
           )}
 
-          {/* Route Path connecting user to destination */}
+          {/* Current User Route Path connecting user to destination */}
           {routeGeometry && (
             <Polyline 
               positions={routeGeometry} 
@@ -624,6 +690,19 @@ export function ActivityDetail() {
               lineCap="round"
             />
           )}
+
+          {/* Other Participants Route Paths */}
+          {Object.entries(participantRoutes).map(([uid, route]: [string, any]) => (
+            <Polyline
+              key={`route-${uid}`}
+              positions={route.geometry}
+              color={route.color}
+              weight={3}
+              opacity={0.6}
+              dashArray="8, 8"
+              lineCap="round"
+            />
+          ))}
 
           <MapControls userLoc={currentUserLocation} destLoc={activity.location} />
         </MapContainer>
