@@ -467,6 +467,8 @@ export function ActivityDetail() {
   async function handleJoin() {
     if (!user || !id) return;
     console.log(`[ActivityDetail] Joining activity: ${id}`);
+    
+    // 1. Write to participants subcollection
     try {
       const pRef = doc(db, `activities/${id}/participants`, user.uid);
       await setDoc(pRef, {
@@ -477,16 +479,25 @@ export function ActivityDetail() {
         joinedAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
-      // Add user to participantIds array in Activity doc
+    } catch (err: any) {
+      console.error("[ActivityDetail] write participant failed:", err);
+      showAlert(`更新参与者失败: ${err.message}`, 'error');
+      return;
+    }
+
+    // 2. Write to activities document
+    try {
       const activityRef = doc(db, 'activities', id);
       await updateDoc(activityRef, {
         participantIds: arrayUnion(user.uid)
       });
-      showAlert("成功加入活动！");
     } catch (err: any) {
-      console.error("[ActivityDetail] handleJoin failed:", err);
-      handleFirestoreError(err, OperationType.WRITE, `activities/${id}/participants/${user.uid}`);
+      console.error("[ActivityDetail] update activity failed:", err);
+      showAlert(`更新活动主文档失败: ${err.message}`, 'error');
+      return;
     }
+
+    showAlert("成功加入活动！");
   }
 
   async function handleNoShow() {

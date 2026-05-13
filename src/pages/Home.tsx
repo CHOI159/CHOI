@@ -42,20 +42,28 @@ export function Home() {
 
       // Automatically join if not already in participantIds
       if (!activityData.participantIds?.includes(user.uid) && activityData.status === 'active') {
-        const pRef = doc(db, `activities/${docId}/participants`, user.uid);
-        await setDoc(pRef, {
-          uid: user.uid,
-          displayName: user.displayName || '匿名用户',
-          photoURL: user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`,
-          status: 'joined',
-          joinedAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
+        try {
+          const pRef = doc(db, `activities/${docId}/participants`, user.uid);
+          await setDoc(pRef, {
+            uid: user.uid,
+            displayName: user.displayName || '匿名用户',
+            photoURL: user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`,
+            status: 'joined',
+            joinedAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        } catch(e: any) {
+          alert('加入活动子集合失败：' + e.message);
+        }
         
-        const activityRef = doc(db, 'activities', docId);
-        await updateDoc(activityRef, {
-          participantIds: arrayUnion(user.uid)
-        });
+        try {
+          const activityRef = doc(db, 'activities', docId);
+          await updateDoc(activityRef, {
+            participantIds: arrayUnion(user.uid)
+          });
+        } catch(e: any) {
+          alert('更新活动主集合失败：' + e.message);
+        }
       }
 
       navigate(`/activity/${docId}`);

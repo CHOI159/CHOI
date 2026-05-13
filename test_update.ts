@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, signInAnonymously } from "firebase/auth";
-import { getFirestore, doc, updateDoc, arrayUnion, setDoc } from "firebase/firestore";
+import { getFirestore, doc, updateDoc, arrayUnion, setDoc, serverTimestamp } from "firebase/firestore";
 import fs from "fs";
 
 const config = JSON.parse(fs.readFileSync("./firebase-applet-config.json", "utf-8"));
@@ -12,22 +12,27 @@ async function run() {
   try {
     const cred = await signInAnonymously(auth);
     console.log("Created user", cred.user.uid);
-    const activityRef = doc(db, 'activities', "test-act-123"); 
-    await setDoc(activityRef, {
-      title: 'Test',
-      creatorId: cred.user.uid,
-      participantIds: [cred.user.uid]
-    });
-    console.log("Created activity");
+    
+    const id = "test-act-123";
+    const user = cred.user;
 
-    // Clear auth and sign in to a new anonymous account? No, signInAnonymously reuses the same unless signed out.
-    await auth.signOut();
-    const cred2 = await signInAnonymously(auth);
-    const testActRef2 = doc(db, 'activities', 'test-act-123');
-    await updateDoc(testActRef2, {
-        participantIds: arrayUnion(cred2.user.uid)
+    const pRef = doc(db, `activities/${id}/participants`, user.uid);
+    await setDoc(pRef, {
+        uid: user.uid,
+        displayName: 'test',
+        photoURL: 'test',
+        status: 'joined',
+        joinedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+    });
+    console.log("Wrote participant document successfully!");
+
+    const activityRef = doc(db, 'activities', id);
+    await updateDoc(activityRef, {
+        participantIds: arrayUnion(user.uid)
     });
     console.log("Updated participantIds successfully!");
+
   } catch (e: any) {
     console.error("Error:", e.message);
   }
