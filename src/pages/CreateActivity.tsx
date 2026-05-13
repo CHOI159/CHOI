@@ -59,8 +59,18 @@ export function CreateActivity() {
     try {
       const startTime = new Date(`${date}T${time}`);
       
+      const generateShareCode = () => {
+        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        let code = '';
+        for (let i = 0; i < 6; i++) {
+            code += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return code;
+      };
+      
       let docId = '';
       try {
+        const shareCode = generateShareCode();
         const docRef = await addDoc(collection(db, 'activities'), {
           title,
           description,
@@ -70,6 +80,8 @@ export function CreateActivity() {
           creatorName: profile?.displayName || user.displayName || '匿名',
           status: 'active',
           createdAt: serverTimestamp(),
+          shareCode,
+          participantIds: [user.uid]
         });
         docId = docRef.id;
       } catch (error) {

@@ -45,18 +45,19 @@ export function Archive() {
   useEffect(() => {
     if (!user) return;
 
-    // Fetch sorted by time and filter statuses client-side to avoid index requirement
+    // Fetch activities where user is participant
     const q = query(
       collection(db, 'activities'),
-      orderBy('startTime', 'desc'),
-      limit(200)
+      where('participantIds', 'array-contains', user.uid)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const archivedStatuses = ['archived', 'cancelled'];
       const data = snapshot.docs
         .map(doc => ({ id: doc.id, ...doc.data() } as Activity))
-        .filter(act => archivedStatuses.includes(act.status));
+        .filter(act => archivedStatuses.includes(act.status))
+        .sort((a, b) => b.startTime.toMillis() - a.startTime.toMillis())
+        .slice(0, 200);
       setActivities(data);
       setLoading(false);
     }, (error) => {

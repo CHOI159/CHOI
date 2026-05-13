@@ -1,22 +1,50 @@
 import React, { useEffect, useState } from 'react';
-import { collection, query, where, orderBy, onSnapshot, limit } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, limit, getDocs } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
 import { Activity } from '../types';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { activityService } from '../services/activityService';
-import { Calendar, MapPin, PlusCircle, Power, Loader2, Archive as ArchiveIcon } from 'lucide-react';
+import { Calendar, MapPin, PlusCircle, Power, Loader2, Archive as ArchiveIcon, Search } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 
 export function Home() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
-
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+
+  const [shareCodeInput, setShareCodeInput] = useState('');
+  const [isJoining, setIsJoining] = useState(false);
+
+  const handleJoinByCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!shareCodeInput.trim() || isJoining) return;
+
+    setIsJoining(true);
+    try {
+      const upperCode = shareCodeInput.trim().toUpperCase();
+      const q = query(collection(db, 'activities'), where('shareCode', '==', upperCode), limit(1));
+      const snap = await getDocs(q);
+      
+      if (snap.empty) {
+        alert("找不到该分享码对应的活动，请检查后重试！");
+        return;
+      }
+
+      const docId = snap.docs[0].id;
+      navigate(`/activity/${docId}`);
+    } catch (err: any) {
+      console.error(err);
+      alert("查询分享码出错：" + err.message);
+    } finally {
+      setIsJoining(false);
+    }
+  };
 
   const handleArchive = async (activityId: string, e: React.MouseEvent) => {
     e.preventDefault();
@@ -52,17 +80,19 @@ export function Home() {
   useEffect(() => {
     if (!user) return;
 
-    // Fetch sorted by time and filter status client-side to avoid index requirement
+    // Fetch activities where user is a participant. 
+    // We sort client-side to avoid needing a composite index for array-contains + orderBy
     const q = query(
       collection(db, 'activities'),
-      orderBy('startTime', 'desc'),
-      limit(100)
+      where('participantIds', 'array-contains', user.uid)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs
         .map(doc => ({ id: doc.id, ...doc.data() } as Activity))
-        .filter(act => ['active', 'completed'].includes(act.status)); // Show active and completed in Home
+        .filter(act => ['active', 'completed'].includes(act.status))
+        .sort((a, b) => b.startTime.toMillis() - a.startTime.toMillis())
+        .slice(0, 100);
       setActivities(data);
       setLoading(false);
     }, (error) => {
@@ -120,6 +150,31 @@ export function Home() {
           </Link>
         </div>
       </header>
+
+      <form onSubmit={handleJoinByCode} className="mb-8 relative group">
+        <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+          <Search className="h-5 w-5 text-[#444] group-focus-within:text-[#f43f5e] transition-colors" />
+        </div>
+        <input
+          type="text"
+          placeholder="输入分享码加入活动..."
+          value={shareCodeInput}
+          onChange={(e) => setShareCodeInput(e.target.value.toUpperCase())}
+          maxLength={6}
+          onBlur={() => {
+            // keep uppercase when blurring just in case
+            setShareCodeInput(prev => prev.toUpperCase());
+          }}
+          className="w-full bg-[#0d0d0d] border border-[#1f1f1f] text-white rounded-2xl pl-12 pr-28 py-4 focus:ring-1 focus:ring-[#f43f5e] focus:border-[#f43f5e] outline-none transition-all placeholder:text-[#333] font-mono tracking-widest text-lg shadow-2xl"
+        />
+        <button
+          type="submit"
+          disabled={isJoining || shareCodeInput.length < 6}
+          className="absolute inset-y-2 right-2 px-6 bg-white text-black font-black uppercase tracking-widest text-[10px] rounded-xl shadow-lg active:scale-95 disabled:opacity-50 disabled:active:scale-100 transition-all flex items-center gap-2"
+        >
+          {isJoining ? <Loader2 className="w-4 h-4 animate-spin" /> : '加入'}
+        </button>
+      </form>
 
       {loading ? (
         <div className="space-y-4">

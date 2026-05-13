@@ -44,7 +44,11 @@ service cloud.firestore {
       allow create: if isSignedIn();
 
       allow update: if isSignedIn()
-        && (resource.data.creatorId == request.auth.uid || request.auth.token.email == 'choihou95@gmail.com');
+        && (
+          resource.data.creatorId == request.auth.uid || 
+          request.auth.token.email == 'choihou95@gmail.com' ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['participantIds'])
+        );
       
       allow delete: if isSignedIn()
         && (resource.data.creatorId == request.auth.uid || request.auth.token.email == 'choihou95@gmail.com');

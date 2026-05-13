@@ -24,6 +24,8 @@ export interface Activity {
   creatorName: string;
   status: 'active' | 'completed' | 'cancelled' | 'archived';
   createdAt: any;
+  shareCode?: string;
+  participantIds?: string[];
 }
 
 export interface Participant {

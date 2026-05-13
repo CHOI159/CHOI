@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, onSnapshot, updateDoc, collection, setDoc, deleteDoc, serverTimestamp, increment, writeBatch } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, collection, setDoc, deleteDoc, serverTimestamp, increment, writeBatch, arrayUnion } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
 import { Activity, Participant } from '../types';
@@ -102,6 +102,15 @@ export function ActivityDetail() {
   const [isProcessingAction, setIsProcessingAction] = useState(false);
   const [isMapFullscreen, setIsMapFullscreen] = useState(false);
   const [isSharePosterOpen, setIsSharePosterOpen] = useState(false);
+  const [alertState, setAlertState] = useState<{isOpen: boolean, message: string, type: 'info' | 'error' | 'insult'}>({isOpen: false, message: '', type: 'info'});
+
+  const showAlert = (message: string, type: 'info' | 'error' | 'insult' = 'info') => {
+    setAlertState({ isOpen: true, message, type });
+  };
+
+  const closeAlert = () => {
+    setAlertState(prev => ({ ...prev, isOpen: false }));
+  };
 
   const settledNoShowLocalRef = React.useRef(false);
   const settledStoodUpLocalRef = React.useRef(false);
@@ -393,7 +402,12 @@ export function ActivityDetail() {
         joinedAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
-      alert("成功加入活动！");
+      // Add user to participantIds array in Activity doc
+      const activityRef = doc(db, 'activities', id);
+      await updateDoc(activityRef, {
+        participantIds: arrayUnion(user.uid)
+      });
+      showAlert("成功加入活动！");
     } catch (err: any) {
       console.error("[ActivityDetail] handleJoin failed:", err);
       handleFirestoreError(err, OperationType.WRITE, `activities/${id}/participants/${user.uid}`);
@@ -420,10 +434,10 @@ export function ActivityDetail() {
 
       setTrackingActive(false);
       setConfirmingNoShow(false);
-      alert('你已标记为放鸽子。行动监控已停止。');
+      showAlert('你已标记为放鸽子。行动监控已停止。');
     } catch (err: any) {
       console.error("[ActivityDetail] handleNoShow failed:", err);
-      alert(`操作失败: ${err.message || '权限不足或网络异常'}`);
+      showAlert(`操作失败: ${err.message || '权限不足或网络异常'}`, 'error');
     } finally {
       setIsProcessingAction(false);
     }
@@ -434,20 +448,21 @@ export function ActivityDetail() {
     
     // Validate distance for cheat prevention
     if (distance === null) {
-      alert("还在获取地球坐标呢，想假装到达？等定位出来再说！");
+      showAlert("还在获取地球坐标呢，想假装到达？等定位出来再说！", 'insult');
       return;
     }
     
     if (distance > 1000) {
       const messages = [
-        "想偷鸡取巧？你离目的地还有十万八千里呢！",
-        "雷达显示你在撒谎！走近点（1km内）再按这个按钮！",
-        "别骗自己了，还要走很远呢！赶紧的！",
-        "你在教我做事？跑近一点再点！",
-        "这个假动作太明显了，雷达可是开着呢！"
+        "作弊狗，滚远点！还要不要点脸了？离目的地比去西天取经还远就在这儿点到达！滚！",
+        "眼睛瞎了吗？看雷达！还有那么远你是不是想飞过去？你以为我好骗？爬过去再点！！",
+        "无能狂怒是吧？没走到目的地就想点假到达，笑的想吐。别跟个小丑一样了，快点去！",
+        "想耍花招？就凭你？也不撒泡尿照照自己现在的坐标！不进方圆1km内，这按钮按烂了也没用！",
+        "别在这儿丢人现眼了，雷达可是看得清清楚楚。你是不是腿短走得慢就在这儿点？滚！",
+        "骗得了自己还能骗得了我？不要碧莲！是不是想吃我一记无敌断子绝孙脚？离目的地那么远还敢点！"
       ];
       const randomMsg = messages[Math.floor(Math.random() * messages.length)];
-      alert(randomMsg);
+      showAlert(randomMsg, 'insult');
       return;
     }
 
@@ -467,10 +482,10 @@ export function ActivityDetail() {
       }, { merge: true });
       setTrackingActive(false);
       setConfirmingArrival(false);
-      alert('任务达成！已标记为抵达。行动监控已停止。');
+      showAlert('任务达成！已标记为抵达。行动监控已停止。');
     } catch (err: any) {
       console.error("[ActivityDetail] handleArrival failed:", err);
-      alert(`操作失败: ${err.message || '权限不足或网络异常'}`);
+      showAlert(`操作失败: ${err.message || '权限不足或网络异常'}`, 'error');
     } finally {
       setIsProcessingAction(false);
     }
@@ -494,11 +509,11 @@ export function ActivityDetail() {
         await activityService.cancelActivity(id);
       }
       setConfirmingComplete(false);
-      alert("活动状态已闭环");
+      showAlert("活动状态已闭环");
     } catch (err: any) {
       console.error(`[ActivityDetail] handleUpdateStatus failed for ${newStatus}:`, err);
       const msg = err.message?.includes('permission-denied') ? '权限不足，只有发起人或管理员可操作' : (err.message || '操作失败');
-      alert(`状态更新失败: ${msg}`);
+      showAlert(`状态更新失败: ${msg}`, 'error');
     } finally {
       setIsProcessingAction(false);
     }
@@ -524,7 +539,7 @@ export function ActivityDetail() {
       navigate('/', { replace: true });
     } catch (err: any) {
       console.error("[ActivityDetail] Archive failed:", err);
-      alert(`终止失败: ${err.message || '未知错误'}`);
+      showAlert(`终止失败: ${err.message || '未知错误'}`, 'error');
     } finally {
       setIsDeleting(false);
     }
@@ -661,49 +676,6 @@ export function ActivityDetail() {
             )}
           </div>
         </div>
-
-        {/* Creator Control Panel (Floating-Bottom Center) */}
-        {user?.uid === activity.creatorId && (activity.status === 'active' || activity.status === 'completed') && (
-          <div className="fixed bottom-40 left-0 right-0 px-6 max-w-lg mx-auto flex justify-center z-[4000]">
-            <motion.div 
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="flex gap-4 items-center bg-black/40 backdrop-blur-2xl p-4 rounded-3xl border border-white/10 shadow-[0_0_80px_rgba(0,0,0,0.5)]"
-            >
-              {activity.status === 'active' && (
-                <button
-                  onClick={() => handleUpdateStatus('completed')}
-                  disabled={isProcessingAction}
-                  className={cn(
-                    "flex items-center gap-3 px-6 py-4 rounded-2xl active:scale-95 transition-all font-black uppercase italic tracking-tighter disabled:opacity-50",
-                    confirmingComplete ? "bg-white text-black scale-105" : "bg-green-500 text-black shadow-[0_0_30px_rgba(34,197,94,0.3)]"
-                  )}
-                >
-                  <CheckCircle2 className={cn("w-5 h-5", confirmingComplete && "animate-bounce")} />
-                  <span>{confirmingComplete ? '确认完成？' : '任务完成'}</span>
-                </button>
-              )}
-
-              <button
-                onClick={handleActionDelete}
-                disabled={isDeleting || isProcessingAction}
-                className={cn(
-                  "flex items-center gap-3 px-6 py-4 rounded-2xl active:scale-95 transition-all font-black uppercase italic tracking-tighter disabled:opacity-50",
-                  confirmingArchive ? "bg-white text-black scale-105" : "bg-[#f43f5e] text-black shadow-[0_0_30px_rgba(244,63,94,0.3)]"
-                )}
-              >
-                {isDeleting ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <>
-                    <Power className={cn("w-5 h-5", confirmingArchive && "animate-bounce")} />
-                    <span>{confirmingArchive ? '确认终止？' : '终止行动'}</span>
-                  </>
-                )}
-              </button>
-            </motion.div>
-          </div>
-        )}
       </div>
 
       <div className="px-6 -mt-16 relative z-10">
@@ -738,6 +710,29 @@ export function ActivityDetail() {
           </div>
 
           <div className="grid grid-cols-1 gap-3 mb-10">
+            {activity.shareCode && (
+              <div className="flex items-center justify-between bg-[#111] p-4 rounded-xl border border-[#f43f5e]/30 shadow-[0_0_15px_rgba(244,63,94,0.1)]">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 bg-[#f43f5e]/10 rounded-lg flex items-center justify-center border border-[#f43f5e]/20 text-[#f43f5e]">
+                    <Share2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-[#f43f5e] font-bold uppercase tracking-widest mb-0.5">行动分享码 (专属通行证)</p>
+                    <p className="font-mono font-black text-xl text-white tracking-[0.2em]">{activity.shareCode}</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(activity.shareCode || '');
+                    showAlert('分享码已复制到剪贴板！');
+                  }}
+                  className="bg-[#1f1f1f] hover:bg-[#333] transition-colors rounded-lg px-4 py-2 font-black text-[10px] text-white uppercase tracking-widest border border-[#333] active:scale-95"
+                >
+                  <span className="opacity-80">复制</span>
+                </button>
+              </div>
+            )}
+
             <div className="flex items-center gap-4 bg-[#111] p-4 rounded-xl border border-[#1f1f1f]">
               <div className="w-10 h-10 bg-[#050505] rounded-lg flex items-center justify-center border border-[#1f1f1f] text-[#f43f5e]">
                 <Calendar className="w-5 h-5" />
@@ -867,6 +862,45 @@ export function ActivityDetail() {
               ))}
             </div>
           </div>
+
+          {/* Creator Control Panel */}
+          {user?.uid === activity.creatorId && (activity.status === 'active' || activity.status === 'completed') && (
+            <div className="mt-8 pt-8 border-t border-[#1f1f1f]">
+              <div className="flex gap-4 items-center justify-center">
+                {activity.status === 'active' && (
+                  <button
+                    onClick={() => handleUpdateStatus('completed')}
+                    disabled={isProcessingAction}
+                    className={cn(
+                      "flex-1 flex items-center justify-center gap-2 px-4 py-4 rounded-xl active:scale-95 transition-all font-black uppercase italic tracking-tighter disabled:opacity-50",
+                      confirmingComplete ? "bg-white text-black scale-105" : "bg-green-500 text-black shadow-[0_0_20px_rgba(34,197,94,0.1)]"
+                    )}
+                  >
+                    <CheckCircle2 className={cn("w-5 h-5", confirmingComplete && "animate-bounce")} />
+                    <span>{confirmingComplete ? '确认完成？' : '任务完成'}</span>
+                  </button>
+                )}
+
+                <button
+                  onClick={handleActionDelete}
+                  disabled={isDeleting || isProcessingAction}
+                  className={cn(
+                    "flex-1 flex items-center justify-center gap-2 px-4 py-4 rounded-xl active:scale-95 transition-all font-black uppercase italic tracking-tighter disabled:opacity-50",
+                    confirmingArchive ? "bg-white text-black scale-105" : "bg-zinc-900 text-[#f43f5e] border border-[#f43f5e]/30"
+                  )}
+                >
+                  {isDeleting ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <>
+                      <Power className={cn("w-5 h-5", confirmingArchive && "animate-bounce")} />
+                      <span>{confirmingArchive ? '确认终止？' : '终止行动'}</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -934,6 +968,62 @@ export function ActivityDetail() {
           </div>
         )}
       </div>
+
+      {/* Custom Alert Modal */}
+      <AnimatePresence>
+        {alertState.isOpen && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={closeAlert}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className={cn(
+                "relative w-full max-w-sm rounded-[2rem] p-8 shrink-0 flex flex-col items-center text-center shadow-2xl border", // Remove flex flex-col items-center if I want different layouts, but centering is good here.
+                alertState.type === 'insult' ? "bg-[#1f0d11] border-red-500/30" :
+                alertState.type === 'error' ? "bg-[#1a1111] border-red-900/30" : "bg-[#111111] border-[#222]"
+              )}
+            >
+              <div className="flex-1 flex flex-col items-center justify-center">
+                {alertState.type === 'insult' && (
+                  <div className="w-16 h-16 rounded-full bg-red-500/20 flex items-center justify-center mb-6">
+                    <XCircle className="w-8 h-8 text-red-500" />
+                  </div>
+                )}
+                <h3 className={cn(
+                  "font-black tracking-tight leading-snug",
+                  alertState.type === 'insult' ? "text-2xl text-red-100 mb-6" : "text-lg text-white mb-6"
+                )}>
+                  {alertState.type === 'insult' ? "警告！" : alertState.message}
+                </h3>
+                
+                {alertState.type === 'insult' && (
+                  <p className="text-red-300 text-sm opacity-90 leading-relaxed font-medium mb-6">
+                    {alertState.message}
+                  </p>
+                )}
+              </div>
+              
+              <button
+                onClick={closeAlert}
+                className={cn(
+                  "w-full py-4 rounded-xl font-black uppercase tracking-widest text-xs transition-active active:scale-95",
+                  alertState.type === 'insult' ? "bg-red-500 text-black shadow-[0_0_20px_rgba(239,68,68,0.3)]" : "bg-white text-black"
+                )}
+              >
+                {alertState.type === 'insult' ? "我错了，这就滚去走" : "明白"}
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       <SharePoster 
         activity={activity} 
         isOpen={isSharePosterOpen} 
