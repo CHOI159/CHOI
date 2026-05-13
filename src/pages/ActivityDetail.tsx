@@ -432,6 +432,25 @@ export function ActivityDetail() {
   async function handleArrival() {
     if (!user || !id || isProcessingAction) return;
     
+    // Validate distance for cheat prevention
+    if (distance === null) {
+      alert("还在获取地球坐标呢，想假装到达？等定位出来再说！");
+      return;
+    }
+    
+    if (distance > 1000) {
+      const messages = [
+        "想偷鸡取巧？你离目的地还有十万八千里呢！",
+        "雷达显示你在撒谎！走近点（1km内）再按这个按钮！",
+        "别骗自己了，还要走很远呢！赶紧的！",
+        "你在教我做事？跑近一点再点！",
+        "这个假动作太明显了，雷达可是开着呢！"
+      ];
+      const randomMsg = messages[Math.floor(Math.random() * messages.length)];
+      alert(randomMsg);
+      return;
+    }
+
     if (!confirmingArrival) {
       setConfirmingArrival(true);
       setTimeout(() => setConfirmingArrival(false), 5000);

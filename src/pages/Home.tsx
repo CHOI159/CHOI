@@ -155,76 +155,120 @@ export function Home() {
         <div className="space-y-4">
           <AnimatePresence>
             {activities.map((activity, index) => (
-              <motion.div
-                key={activity.id}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 20 }}
-                transition={{ delay: index * 0.05 }}
-                className="relative group bg-[#0d0d0d] rounded-2xl border border-[#1f1f1f] shadow-2xl overflow-hidden"
-              >
-                <Link
-                  to={`/activity/${activity.id}`}
-                  className="block p-6 pr-16 active:scale-[0.99] transition-all relative group/card"
-                >
-                  <div className="absolute top-0 left-0 w-1 h-full bg-[#f43f5e] opacity-50 group-hover/card:opacity-100 transition-opacity" />
-                  
-                  <div className="flex justify-between items-start mb-6">
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <h2 className="text-2xl font-light text-white tracking-tight">{activity.title}</h2>
-                        {activity.status === 'completed' && (
-                          <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter bg-green-500/20 text-green-400 border border-green-500/30">
-                            已完成
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[#666] text-[10px] uppercase font-bold tracking-widest mt-0.5">由 {activity.creatorName} 发起</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xl font-mono text-[#f43f5e]">{new Date(activity.startTime.toDate()).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</p>
-                      <p className="text-[10px] text-[#666] uppercase">{new Date(activity.startTime.toDate()).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-4 text-[10px] text-[#888] font-bold uppercase tracking-widest">
-                    <div className="flex items-center gap-1.5">
-                      <MapPin className="w-3 h-3 text-[#f43f5e]" />
-                      <span className="truncate max-w-[180px] text-zinc-500">{activity.location.address}</span>
-                    </div>
-                  </div>
-                </Link>
-
-                {/* Archive Button - positioned absolutely within the relative motion.div but OUTSIDE the Link */}
-                {user?.uid === activity.creatorId && (
-                  <button
-                    type="button"
-                    onClick={(e) => handleArchive(activity.id, e)}
-                    className={cn(
-                      "absolute top-1/2 -translate-y-1/2 right-4 w-14 h-14 rounded-2xl flex flex-col items-center justify-center transition-all z-20 shadow-xl cursor-pointer",
-                      confirmingId === activity.id 
-                        ? "bg-[#f43f5e] text-black border border-white/20 scale-110" 
-                        : "bg-zinc-900 border border-white/5 text-[#444] hover:text-[#f43f5e] active:scale-90"
-                    )}
-                    style={{ touchAction: 'manipulation' }}
-                  >
-                    {deletingId === activity.id ? (
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                    ) : (
-                      <>
-                        <Power className={cn("w-6 h-6 mb-0.5", confirmingId === activity.id && "animate-bounce")} />
-                        <span className="text-[7px] font-black uppercase tracking-tighter">
-                          {confirmingId === activity.id ? '确定终止' : '终止活动'}
-                        </span>
-                      </>
-                    )}
-                  </button>
-                )}
-              </motion.div>
+              <ActivityCard 
+                key={activity.id} 
+                activity={activity} 
+                index={index} 
+                user={user}
+                confirmingId={confirmingId}
+                deletingId={deletingId}
+                handleArchive={handleArchive}
+              />
             ))}
           </AnimatePresence>
         </div>
       )}
     </div>
+  );
+}
+
+function ActivityCard({ activity, index, user, confirmingId, deletingId, handleArchive }: any) {
+  const [isSwiped, setIsSwiped] = useState(false);
+
+  return (
+    <motion.div
+        initial={{ opacity: 0, x: -20 }}
+        animate={{ opacity: 1, x: 0 }}
+        exit={{ opacity: 0, x: 20 }}
+        transition={{ delay: index * 0.05 }}
+        className="relative bg-[#0d0d0d] rounded-2xl border border-[#1f1f1f] shadow-2xl overflow-hidden"
+      >
+        {/* The Action Background Layer (revealed when swiped left) */}
+        {user?.uid === activity.creatorId && (
+          <div className="absolute right-0 top-0 bottom-0 w-[100px] flex items-center justify-end pr-4 bg-[#1a1a1a]">
+            <button
+              type="button"
+              onClick={(e) => {
+                // If the user clicks confirm, it handles it. 
+                // We keep it swiped open while confirming.
+                handleArchive(activity.id, e);
+              }}
+              className={cn(
+                "w-16 h-16 rounded-2xl flex flex-col items-center justify-center transition-all shadow-xl cursor-pointer",
+                confirmingId === activity.id 
+                  ? "bg-[#f43f5e] text-black border border-white/20 scale-105" 
+                  : "bg-zinc-900 border border-white/5 text-[#444] hover:text-[#f43f5e] active:scale-95"
+              )}
+            >
+              {deletingId === activity.id ? (
+                <Loader2 className="w-6 h-6 animate-spin" />
+              ) : (
+                <>
+                  <Power className={cn("w-6 h-6 mb-1", confirmingId === activity.id && "animate-bounce")} />
+                  <span className="text-[9px] font-black uppercase tracking-tighter">
+                    {confirmingId === activity.id ? '确定终止' : '终止'}
+                  </span>
+                </>
+              )}
+            </button>
+          </div>
+        )}
+
+        {/* The Foreground Card Layer */}
+        <motion.div
+          drag={user?.uid === activity.creatorId ? "x" : false}
+          dragConstraints={{ left: -100, right: 0 }}
+          dragElastic={0.1}
+          animate={{ x: isSwiped ? -100 : 0 }}
+          onDragEnd={(e, info) => {
+            if (info.offset.x < -40 || info.velocity.x < -100) {
+              setIsSwiped(true);
+            } else {
+              setIsSwiped(false);
+            }
+          }}
+          className="relative block bg-[#0d0d0d] z-10 w-full h-full border-r border-[#1f1f1f]"
+        >
+          <Link
+            to={`/activity/${activity.id}`}
+            onClick={(e) => {
+              // Prevent navigation if we are actively swiped open, maybe let user close it instead
+              if (isSwiped) {
+                e.preventDefault();
+                setIsSwiped(false);
+              }
+            }}
+            className="block p-6 active:scale-[0.99] transition-all relative group/card"
+            draggable={false} // prevent HTML default dragging
+          >
+            <div className="absolute top-0 left-0 w-1 h-full bg-[#f43f5e] opacity-50 group-hover/card:opacity-100 transition-opacity" />
+            
+            <div className="flex justify-between items-start mb-6 pointer-events-none">
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <h2 className="text-2xl font-light text-white tracking-tight">{activity.title}</h2>
+                  {activity.status === 'completed' && (
+                    <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter bg-green-500/20 text-green-400 border border-green-500/30">
+                      已完成
+                    </span>
+                  )}
+                </div>
+                <p className="text-[#666] text-[10px] uppercase font-bold tracking-widest mt-0.5">由 {activity.creatorName} 发起</p>
+              </div>
+              <div className="text-right pointer-events-none">
+                <p className="text-xl font-mono text-[#f43f5e]">{new Date(activity.startTime.toDate()).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</p>
+                <p className="text-[10px] text-[#666] uppercase">{new Date(activity.startTime.toDate()).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })}</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4 text-[10px] text-[#888] font-bold uppercase tracking-widest pointer-events-none">
+              <div className="flex items-center gap-1.5">
+                <MapPin className="w-3 h-3 text-[#f43f5e]" />
+                <span className="truncate max-w-[200px] text-zinc-500">{activity.location.address}</span>
+              </div>
+            </div>
+          </Link>
+        </motion.div>
+    </motion.div>
   );
 }
