@@ -46,12 +46,13 @@ service cloud.firestore {
       allow update: if isSignedIn()
         && (
           resource.data.creatorId == request.auth.uid || 
-          request.auth.token.get('email', '') == 'choihou95@gmail.com' ||
-          (incoming().diff(existing()).affectedKeys().hasOnly(['participantIds']))
+          ('email' in request.auth.token && request.auth.token.email == 'choihou95@gmail.com') ||
+          (incoming().diff(existing()).affectedKeys().hasOnly(['participantIds'])) ||
+          incoming().participantIds.hasAny([request.auth.uid])
         );
       
       allow delete: if isSignedIn()
-        && (resource.data.creatorId == request.auth.uid || request.auth.token.get('email', '') == 'choihou95@gmail.com');
+        && (resource.data.creatorId == request.auth.uid || ('email' in request.auth.token && request.auth.token.email == 'choihou95@gmail.com'));
     }
 
     // --- 参与者子集合规则 ---
