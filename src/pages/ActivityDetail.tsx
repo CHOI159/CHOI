@@ -123,6 +123,16 @@ export function ActivityDetail() {
   const [isSharePosterOpen, setIsSharePosterOpen] = useState(false);
   const [alertState, setAlertState] = useState<{isOpen: boolean, message: string, type: 'info' | 'error' | 'insult'}>({isOpen: false, message: '', type: 'info'});
 
+  // Self-heal participantIds if somehow missing
+  useEffect(() => {
+    if (userParticipant && activity && (!activity.participantIds || !activity.participantIds.includes(userParticipant.uid))) {
+      const activityRef = doc(db, 'activities', id!);
+      updateDoc(activityRef, {
+        participantIds: arrayUnion(userParticipant.uid)
+      }).catch(err => console.warn("Self-healing failed:", err));
+    }
+  }, [userParticipant, activity?.participantIds, id]);
+
   const showAlert = (message: string, type: 'info' | 'error' | 'insult' = 'info') => {
     setAlertState({ isOpen: true, message, type });
   };
