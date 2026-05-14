@@ -1,24 +1,14 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // 默认拒绝所有读写
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // --- 全局辅助函数 ---
     function isSignedIn() {
       return request.auth != null;
     }
-
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
-
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
-    }
-
+    
     function incoming() {
       return request.resource.data;
     }
@@ -27,37 +17,37 @@ service cloud.firestore {
       return resource.data;
     }
 
-    // --- 用户集合规则 ---
     match /users/{userId} {
       allow get: if isSignedIn();
       allow list: if isSignedIn();
-      
-      allow create: if isSignedIn();
-
-      allow update: if isSignedIn();
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isSignedIn() && request.auth.uid == userId;
     }
 
-    // --- 活动集合规则 ---
     match /activities/{activityId} {
       allow read: if isSignedIn();
       
       allow create: if isSignedIn();
 
-      allow update: if isSignedIn();
+      allow update: if (
+        isSignedIn() && (
+          // 允许更新参与者数组
+          incoming().diff(existing()).affectedKeys().hasOnly(['participantIds']) ||
+          // 仅创建者可以更新活动状态或详情
+          (existing().creatorId == request.auth.uid) ||
+          // 自动结束活动的情况
+          (incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']) && incoming().status == 'completed')
+        )
+      );
       
-      allow delete: if isSignedIn()
-        && (resource.data.get('creatorId', '') == request.auth.uid || ('email' in request.auth.token && request.auth.token.email == 'choihou95@gmail.com'));
+      allow delete: if isSignedIn() && existing().creatorId == request.auth.uid;
     }
 
-    // --- 参与者子集合规则 ---
     match /activities/{activityId}/participants/{userId} {
       allow read: if isSignedIn();
-      
-      allow create: if isSignedIn();
-
-      allow update: if isSignedIn();
-      
-      allow delete: if isOwner(userId);
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isSignedIn() && request.auth.uid == userId;
+      allow delete: if isSignedIn() && request.auth.uid == userId;
     }
   }
 }
