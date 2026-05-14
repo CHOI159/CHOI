@@ -7,11 +7,24 @@ interface LocationSearchProps {
   placeholder?: string;
 }
 
-const API_KEY =
-  process.env.GOOGLE_MAPS_PLATFORM_KEY ||
-  (import.meta as any).env?.VITE_GOOGLE_MAPS_PLATFORM_KEY ||
-  (globalThis as any).GOOGLE_MAPS_PLATFORM_KEY ||
-  '';
+// Define the API key safely
+const getApiKey = () => {
+  try {
+    if (typeof import.meta !== 'undefined' && (import.meta as any).env) {
+      if ((import.meta as any).env.VITE_GOOGLE_MAPS_PLATFORM_KEY) return (import.meta as any).env.VITE_GOOGLE_MAPS_PLATFORM_KEY;
+      if ((import.meta as any).env.VITE_GOOGLE_MAPS_API_KEY) return (import.meta as any).env.VITE_GOOGLE_MAPS_API_KEY;
+    }
+  } catch (e) {}
+  
+  if (typeof process !== 'undefined' && process.env) {
+    if (process.env.GOOGLE_MAPS_PLATFORM_KEY) return process.env.GOOGLE_MAPS_PLATFORM_KEY;
+    if (process.env.VITE_GOOGLE_MAPS_PLATFORM_KEY) return process.env.VITE_GOOGLE_MAPS_PLATFORM_KEY;
+  }
+  
+  return '';
+};
+
+const API_KEY = getApiKey();
 const hasValidKey = Boolean(API_KEY) && API_KEY !== 'YOUR_API_KEY';
 
 function SearchInner({ onLocationSelect, placeholder = "搜索目的地..." }: LocationSearchProps) {
@@ -44,25 +57,10 @@ function SearchInner({ onLocationSelect, placeholder = "搜索目的地..." }: L
       return;
     }
     setLoading(true);
-    try {
-      if (hasValidKey && placesLib) {
-        // Use Google Maps Places API (New)
-        const response = await placesLib.Place.searchByText({
-          textQuery: val,
-          fields: ['displayName', 'location', 'formattedAddress'],
-          maxResultCount: 8,
-        });
-        
-        const mappedResults = (response.places || []).map(p => ({
-          lat: p.location?.lat(),
-          lng: p.location?.lng(),
-          display_name: p.displayName,
-          address_details: p.formattedAddress
-        }));
-        setResults(mappedResults);
-        setIsOpen(true);
-      } else {
-        // Fallback to OSM Nominatim
+    
+    // Helper function for Nominatim Fallback
+    const fallbackToOSM = async () => {
+      try {
         const response = await fetch(
           `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(val)}&limit=5&addressdetails=1&email=test@example.com`
         );
@@ -75,11 +73,44 @@ function SearchInner({ onLocationSelect, placeholder = "搜索目的地..." }: L
         }));
         setResults(mappedResults);
         setIsOpen(true);
+      } catch (err) {
+        console.error('OSM Fallback error:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    try {
+      if (hasValidKey && placesLib) {
+        // Use Classic Google Maps Places API
+        const dummyElement = document.createElement('div');
+        const service = new placesLib.PlacesService(dummyElement);
+        
+        service.textSearch({ query: val }, (results, status) => {
+          if (status === placesLib.PlacesServiceStatus.OK && results) {
+            const mappedResults = results.map(p => ({
+              lat: p.geometry?.location?.lat(),
+              lng: p.geometry?.location?.lng(),
+              display_name: p.name,
+              address_details: p.formatted_address
+            }));
+            setResults(mappedResults);
+            setIsOpen(true);
+            setLoading(false);
+          } else {
+            console.error('Places API textSearch failed with status:', status);
+            // Fallback to OSM completely
+            fallbackToOSM();
+          }
+        });
+        return; // the callback handles loading state
+      } else {
+        // Fallback to OSM Nominatim
+        await fallbackToOSM();
       }
     } catch (error) {
       console.error('Search error:', error);
-    } finally {
-      setLoading(false);
+      await fallbackToOSM();
     }
   };
 

@@ -56,7 +56,11 @@ export function Archive() {
       const data = snapshot.docs
         .map(doc => ({ id: doc.id, ...doc.data() } as Activity))
         .filter(act => archivedStatuses.includes(act.status))
-        .sort((a, b) => b.startTime.toMillis() - a.startTime.toMillis())
+        .sort((a, b) => {
+          const aTime = a.startTime?.toMillis ? a.startTime.toMillis() : 0;
+          const bTime = b.startTime?.toMillis ? b.startTime.toMillis() : 0;
+          return bTime - aTime;
+        })
         .slice(0, 200);
       setActivities(data);
       setLoading(false);

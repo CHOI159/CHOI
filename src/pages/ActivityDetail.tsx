@@ -184,6 +184,16 @@ export function ActivityDetail() {
     };
   }, [id, user]);
 
+  // Self healing: If user signed up via participants subcollection but the parent participantIds array lacks them, fix it.
+  useEffect(() => {
+    if (userParticipant && activity && (!activity.participantIds || !activity.participantIds.includes(userParticipant.uid))) {
+      const activityRef = doc(db, 'activities', id!);
+      updateDoc(activityRef, {
+        participantIds: arrayUnion(userParticipant.uid)
+      }).catch(err => console.warn("[ActivityDetail] Self-healing participantIds failed:", err));
+    }
+  }, [userParticipant, activity?.participantIds, id]);
+
   // Logic to activate tracking - only 1 hour before start, and STOP if archived
   useEffect(() => {
     if (!activity || !user || !userParticipant) return;

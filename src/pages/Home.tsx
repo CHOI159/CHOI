@@ -117,11 +117,19 @@ export function Home() {
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() } as Activity))
+      const rawData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Activity));
+      console.log("[Home] Raw activities fetched:", rawData.length, rawData);
+      
+      const data = rawData
         .filter(act => ['active', 'completed'].includes(act.status))
-        .sort((a, b) => b.startTime.toMillis() - a.startTime.toMillis())
+        .sort((a, b) => {
+          const aTime = a.startTime?.toMillis ? a.startTime.toMillis() : 0;
+          const bTime = b.startTime?.toMillis ? b.startTime.toMillis() : 0;
+          return bTime - aTime;
+        })
         .slice(0, 100);
+      
+      console.log("[Home] Filtered & sorted activities:", data.length);
       setActivities(data);
       setLoading(false);
     }, (error) => {
@@ -133,32 +141,8 @@ export function Home() {
   }, [user]);
 
   useEffect(() => {
-    if (activities.length === 0) return;
-
-    const lifecycleCheck = () => {
-      const now = Date.now();
-      const oneHour = 60 * 60 * 1000;
-      const oneAndHalfHours = 90 * 60 * 1000;
-
-      activities.forEach(activity => {
-        const startTime = activity.startTime.toDate().getTime();
-        
-        // 1. Auto-Archive (1.5h after start)
-        if (now >= startTime + oneAndHalfHours && activity.status !== 'archived') {
-          console.log(`[Lifecycle] Auto-archiving activity ${activity.id}`);
-          activityService.archiveActivity(activity.id);
-        }
-        // 2. Auto-Complete (1h after start)
-        else if (now >= startTime + oneHour && activity.status === 'active') {
-          console.log(`[Lifecycle] Auto-completing activity ${activity.id}`);
-          activityService.completeActivity(activity.id);
-        }
-      });
-    };
-
-    const interval = setInterval(lifecycleCheck, 30000); 
-    lifecycleCheck(); // Run once immediately
-    return () => clearInterval(interval);
+    // Client-side auto-archiving has been removed.
+    // It can cause unexpected disappearance of activities during testing or if users create past activities.
   }, [activities]);
 
   return (
