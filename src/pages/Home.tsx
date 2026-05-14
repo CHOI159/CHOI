@@ -53,7 +53,7 @@ export function Home() {
             updatedAt: serverTimestamp(),
           });
         } catch(e: any) {
-          alert('加入活动子集合失败：' + e.message);
+          console.warn('加入活动子集合失败：' + e.message);
         }
         
         try {
@@ -62,7 +62,7 @@ export function Home() {
             participantIds: arrayUnion(user.uid)
           });
         } catch(e: any) {
-          alert('更新活动主集合失败：' + e.message);
+          console.warn('更新活动主集合失败：' + e.message);
         }
       }
 
